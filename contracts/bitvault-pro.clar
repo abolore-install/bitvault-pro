@@ -62,3 +62,68 @@
         token-count: uint
     }
 )
+
+;; Individual asset configurations within portfolios
+(define-map PortfolioAssets
+    {portfolio-id: uint, token-id: uint}
+    {
+        target-percentage: uint,
+        current-amount: uint,
+        token-address: principal
+    }
+)
+
+;; User portfolio ownership tracking
+(define-map UserPortfolios
+    principal
+    (list 20 uint)
+)
+
+;; READ-ONLY QUERY FUNCTIONS
+
+;; Retrieve complete portfolio information by ID
+(define-read-only (get-portfolio (portfolio-id uint))
+    (map-get? Portfolios portfolio-id)
+)
+
+;; Get specific asset configuration within a portfolio
+(define-read-only (get-portfolio-asset (portfolio-id uint) (token-id uint))
+    (map-get? PortfolioAssets {portfolio-id: portfolio-id, token-id: token-id})
+)
+
+;; List all portfolios owned by a specific user
+(define-read-only (get-user-portfolios (user principal))
+    (default-to (list) (map-get? UserPortfolios user))
+)
+
+;; Calculate rebalancing requirements and timing
+(define-read-only (calculate-rebalance-amounts (portfolio-id uint))
+    (let (
+        (portfolio (unwrap! (get-portfolio portfolio-id) ERR-INVALID-PORTFOLIO))
+        (total-value (get total-value portfolio))
+    )
+    (ok {
+        portfolio-id: portfolio-id,
+        total-value: total-value,
+        needs-rebalance: (> (- block-height (get last-rebalanced portfolio)) u144) ;; 24 hours in blocks
+    }))
+)
+
+;; INTERNAL VALIDATION FUNCTIONS
+
+;; Validate token ID within portfolio constraints
+(define-private (validate-token-id (portfolio-id uint) (token-id uint))
+    (let (
+        (portfolio (unwrap! (get-portfolio portfolio-id) false))
+    )
+    (and 
+        (< token-id MAX-TOKENS-PER-PORTFOLIO)
+        (< token-id (get token-count portfolio))
+        true
+    ))
+)
+
+;; Ensure percentage values are within valid range
+(define-private (validate-percentage (percentage uint))
+    (and (>= percentage u0) (<= percentage BASIS-POINTS))
+)
